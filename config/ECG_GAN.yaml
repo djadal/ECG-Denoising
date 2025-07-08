@@ -1,0 +1,19 @@
+# config/ECG_GAN.yaml
+train:
+  epochs: 70
+  batch_size: 100
+  optimizer:
+    type: "RMSprop"
+    lr: 0.0002
+  lambda_l1: 100.0
+  noise_dim: 4
+  length: 512
+
+generator:
+  feats: 1
+
+discriminator:
+  feats: 2
+
+test:
+  batch_size: 50

@@ -8,9 +8,9 @@ class Generator(nn.Module):
     def __init__(
         self, 
         input_channels=1,
-        latent_dim=4,
-        encoder_channels=[16, 32, 64, 128, 256, 512, 1024],
-        decoder_channels=[512, 256, 128, 64, 32, 16, 1],
+        latent_dim=512,
+        encoder_channels=[16, 32, 64, 128, 256, 512],
+        decoder_channels=[256, 128, 64, 32, 16, 1],
         kernel_size=31,
         stride=2,
         padding_mode='reflect'
@@ -54,7 +54,7 @@ class Generator(nn.Module):
                         padding=kernel_size // 2,
                         output_padding=stride - 1 
                     ),
-                    nn.PReLU() if i < len(decoder_channels) - 1 else nn.Tanh()
+                    nn.PReLU()
                 )
             )
         
@@ -84,7 +84,7 @@ class Discriminator(nn.Module):
     def __init__(
         self, 
         input_channels=2,  
-        hidden_channels=[16, 32, 64, 128, 256, 512, 1024],
+        hidden_channels=[16, 32, 64, 128, 256, 512],
         kernel_size=31,
         stride=2,
         padding_mode='reflect'

@@ -1,0 +1,22 @@
+
+#type: args
+
+train:
+  feats: 80
+  epochs: 400
+  batch_size: 96 
+  lr_scheduler:
+    use: true
+  optimizer:
+    type: "Adam"
+    lr: 1.0e-3
+    weight_decay: 0.
+    
+diffusion:
+  beta_start: 0.0001
+  beta_end: 0.5
+  num_steps: 50
+  schedule: "quad"
+
+test:
+  batch_size: 50
