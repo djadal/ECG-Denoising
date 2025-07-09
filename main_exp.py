@@ -20,9 +20,11 @@ if __name__ == "__main__":
     parser.add_argument("--exp_name", type=str, choices=[
         "DeScoD",
         "DRNN",
+        "FCN_DAE",
+        "ACDAE",
         "ECG_GAN",
         ""
-    ], default="DRNN", help="Experiment name")
+    ], default="ACDAE", help="Experiment name")
     parser.add_argument('--device', default='cuda:0' if torch.cuda.is_available() else 'cpu', help='Device')
     parser.add_argument('--n_type', type=int, default=1, help='noise version')
     
@@ -39,6 +41,7 @@ if __name__ == "__main__":
     
     timestamp = datetime.datetime.now().strftime("%Y%m%d_%H%M%S")
     log_dir = f"./logs/{args.exp_name}/noise_type_" + str(args.n_type) + f"/{timestamp}"
+    print('log:', log_dir)
     os.makedirs(log_dir, exist_ok=True)
     
     # Load Data
@@ -87,6 +90,22 @@ if __name__ == "__main__":
         model = DRDNN(input_size=config['model']['input_size'],
                       hidden_size=config['model']['hidden_size'],
                       num_layers=config['model']['num_layers']).to(args.device)
+        
+        train_dl(model, config['train'], train_loader, args.device, 
+        valid_loader=val_loader, valid_epoch_interval=args.val_interval, foldername=foldername, log_dir=log_dir)
+        
+    # FCN_DAE
+    elif (args.exp_name == "FCN_DAE"):
+        from FCN_DAE.model import FCN_DAE
+        model = FCN_DAE(filters=config['model']['filters']).to(args.device)
+        
+        train_dl(model, config['train'], train_loader, args.device, 
+        valid_loader=val_loader, valid_epoch_interval=args.val_interval, foldername=foldername, log_dir=log_dir)
+
+    # ACDAE
+    elif (args.exp_name == "ACDAE"):
+        from ACDAE.model import ACDAE
+        model = ACDAE(in_channels=config['model']['in_channels']).to(args.device)
         
         train_dl(model, config['train'], train_loader, args.device, 
         valid_loader=val_loader, valid_epoch_interval=args.val_interval, foldername=foldername, log_dir=log_dir)

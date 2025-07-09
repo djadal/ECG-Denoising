@@ -1,0 +1,15 @@
+train:
+  epochs: 50
+  batch_size: 32
+  optimizer:
+    type: "Adam"
+    lr: 0.0001
+  lr_scheduler:
+    use: false
+  criterion: "MSELoss"
+
+model:
+  in_channels: 1
+
+test:
+  batch_size: 50

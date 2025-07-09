@@ -1,0 +1,15 @@
+train:
+  epochs: 80
+  batch_size: 64
+  optimizer:
+    type: "Adam"
+    lr: 0.001
+  lr_scheduler:
+    use: false
+  criterion: "MSELoss"
+
+model:
+  filters: 16
+
+test:
+  batch_size: 50
