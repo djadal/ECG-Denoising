@@ -1,5 +1,6 @@
 *.pyc
 /Data
+/logs
 /.vscode
 /DeepFilter
 /Score_based_ECG_Denoising

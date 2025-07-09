@@ -1,15 +1,16 @@
 import numpy as np
 import torch
 import torch.optim as optim
+from torch.utils.tensorboard import SummaryWriter
 from tqdm import tqdm
 import pickle
 import metrics
 
-def train(model, config, train_loader, device, valid_loader=None, valid_epoch_interval=5, foldername=""):
+def train_diffusion(model, config, train_loader, device, valid_loader=None, valid_epoch_interval=5, foldername="", log_dir=None):
 
     optimizer_config = config['optimizer']
     optimizer_type = getattr(optim, optimizer_config.get("type", "Adam"))
-    optimizer = optimizer_type(model.parameters(), **{k: v for k, v in optimizer_config.items() if k not in ['name']})
+    optimizer = optimizer_type(model.parameters(), **{k: v for k, v in optimizer_config.items() if k not in ['type']})
 
     #ema = EMA(0.9)
     #ema.register(model)
@@ -23,6 +24,7 @@ def train(model, config, train_loader, device, valid_loader=None, valid_epoch_in
         )
     
     best_valid_loss = 1e15
+    writer = SummaryWriter(log_dir=log_dir)
     
     for epoch_no in range(config["epochs"]):
         avg_loss = 0
@@ -50,6 +52,7 @@ def train(model, config, train_loader, device, valid_loader=None, valid_epoch_in
                 )
             if lr_scheduler is not None:
                 lr_scheduler.step()
+        writer.add_scalar('Loss/Train', avg_loss / batch_no, epoch_no)
             
         if valid_loader is not None and (epoch_no + 1) % valid_epoch_interval == 0:
             model.eval()
@@ -68,6 +71,8 @@ def train(model, config, train_loader, device, valid_loader=None, valid_epoch_in
                             refresh=True,
                         )
             
+            writer.add_scalar('Loss/Validation', avg_loss_valid / batch_no, epoch_no)
+            
             if best_valid_loss > avg_loss_valid/batch_no:
                 best_valid_loss = avg_loss_valid/batch_no
                 print("\n best loss is updated to ",avg_loss_valid / batch_no,"at Epoch", epoch_no+1)
@@ -78,7 +83,7 @@ def train(model, config, train_loader, device, valid_loader=None, valid_epoch_in
     torch.save(model.state_dict(), final_path)
 
 
-def train_gan(generator, discriminator, config, train_loader, device, valid_loader=None, valid_epoch_interval=5, foldername=""):
+def train_gan(generator, discriminator, config, train_loader, device, valid_loader=None, valid_epoch_interval=5, foldername="", log_dir=None):
     
     optimizer_config = config['optimizer']
     optimizer_type = getattr(optim, optimizer_config.get("type", "RMSprop"))
@@ -96,6 +101,7 @@ def train_gan(generator, discriminator, config, train_loader, device, valid_load
         disc_final_path = foldername + "/discriminator_final.pth"
     
     best_valid_loss = 1e15
+    writer = SummaryWriter(log_dir=log_dir)
     lambda_l1 = config.get('lambda_l1', 100.0)
     
     for epoch_no in range(config["epochs"]):
@@ -151,6 +157,8 @@ def train_gan(generator, discriminator, config, train_loader, device, valid_load
                     },
                     refresh=True,
                 )
+        writer.add_scalar('Loss/Generator', avg_g_loss / batch_no, epoch_no)
+        writer.add_scalar('Loss/Discriminator', avg_d_loss / batch_no, epoch_no)
         
         if valid_loader is not None and (epoch_no + 1) % valid_epoch_interval == 0:
             generator.eval()
@@ -176,10 +184,11 @@ def train_gan(generator, discriminator, config, train_loader, device, valid_load
                             },
                             refresh=True,
                         )
+            writer.add_scalar('Loss/Validation', avg_valid_loss / batch_no, epoch_no)
             
             if best_valid_loss > avg_valid_loss / batch_no:
                 best_valid_loss = avg_valid_loss / batch_no
-                print("\n best loss is updated to", avg_valid_loss / batch_no, "at Epoch", epoch_no + 1)
+                print("\n best loss is updated to", f"{avg_valid_loss / batch_no:.4f}", "at Epoch", epoch_no + 1)
                 
                 if foldername != "":
                     torch.save(generator.state_dict(), gen_output_path)
@@ -190,70 +199,89 @@ def train_gan(generator, discriminator, config, train_loader, device, valid_load
         torch.save(discriminator.state_dict(), disc_final_path)    
     
 
-def evaluate(model, test_loader, shots, device, foldername=""):
-    ssd_total = 0
-    mad_total = 0
-    prd_total = 0
-    cos_sim_total = 0
-    snr_noise = 0
-    snr_recon = 0
-    snr_improvement = 0
-    eval_points = 0
+def train_dl(model, config, train_loader, device, valid_loader=None, valid_epoch_interval=5, foldername="", log_dir=None):
+
+    # optimizer config
+    optimizer_config = config['optimizer']
+    optimizer_type = getattr(optim, optimizer_config.get("type", "Adam"))
+    optimizer = optimizer_type(model.parameters(), **{k: v for k, v in optimizer_config.items() if k not in ['type']})
     
-    restored_sig = []
-    with tqdm(test_loader) as it:
-        for batch_no, (clean_batch, noisy_batch) in enumerate(it, start=1):
-            clean_batch, noisy_batch = clean_batch.to(device), noisy_batch.to(device)
-            
-            if shots > 1:
-                output = 0
-                for i in range(shots):
-                    output+=model.denoising(noisy_batch)
-                output /= shots
-            else:
-                output = model.denoising(noisy_batch) #B,1,L
-            clean_batch = clean_batch.permute(0, 2, 1)
-            noisy_batch = noisy_batch.permute(0, 2, 1)
-            output = output.permute(0, 2, 1) #B,L,1
-            out_numpy = output.cpu().detach().numpy()
-            clean_numpy = clean_batch.cpu().detach().numpy()
-            noisy_numpy = noisy_batch.cpu().detach().numpy()
-            
-            
-            eval_points += len(output)
-            ssd_total += np.sum(metrics.SSD(clean_numpy, out_numpy))
-            mad_total += np.sum(metrics.MAD(clean_numpy, out_numpy))
-            prd_total += np.sum(metrics.PRD(clean_numpy, out_numpy))
-            cos_sim_total += np.sum(metrics.COS_SIM(clean_numpy, out_numpy))
-            snr_noise += np.sum(metrics.SNR(clean_numpy, noisy_numpy))
-            snr_recon += np.sum(metrics.SNR(clean_numpy, out_numpy))
-            snr_improvement += np.sum(metrics.SNR_improvement(noisy_numpy, out_numpy, clean_numpy))
-            restored_sig.append(out_numpy)
-            
-            it.set_postfix(
-                ordered_dict={
-                    "ssd_total": ssd_total/eval_points,
-                    "mad_total": mad_total/eval_points,
-                    "prd_total": prd_total/eval_points,
-                    "cos_sim_total": cos_sim_total/eval_points,
-                    "snr_in": snr_noise/eval_points,
-                    "snr_out": snr_recon/eval_points,
-                    "snr_improve": snr_improvement/eval_points,
-                },
-                refresh=True,
-            )
+    # criterion config
+    criterion = config.get('criterion', 'MSELoss')
+    if criterion == 'MSELoss':
+        criterion = torch.nn.MSELoss()
     
-    restored_sig = np.concatenate(restored_sig)
+    if foldername != "":
+        output_path = foldername + "/model.pth"
+        final_path = foldername + "/final.pth"
     
-    #np.save(foldername + '/denoised.npy', restored_sig)
+    # lr_scheduler config
+    if config['lr_scheduler'].get("use", False):
+        lr_scheduler = torch.optim.lr_scheduler.StepLR(
+            optimizer, step_size=150, gamma=.1, verbose=True
+        )
+    else:
+        lr_scheduler = None
     
-    print("ssd_total: ",ssd_total/eval_points)
-    print("mad_total: ", mad_total/eval_points,)
-    print("prd_total: ", prd_total/eval_points,)
-    print("cos_sim_total: ", cos_sim_total/eval_points,)
-    print("snr_in: ", snr_noise/eval_points,)
-    print("snr_out: ", snr_recon/eval_points,)
-    print("snr_improve: ", snr_improvement/eval_points,)
+    best_valid_loss = 1e15
+    writer = SummaryWriter(log_dir=log_dir)
+    
+    # training loop
+    for epoch_no in range(config["epochs"]):
+        avg_loss = 0
+        model.train()
+        
+        with tqdm(train_loader) as it:
+            for batch_no, (clean_batch, noisy_batch) in enumerate(it, start=1):
+                clean_batch, noisy_batch = clean_batch.to(device), noisy_batch.to(device)
+                optimizer.zero_grad()
+                
+                denoised_batch = model(noisy_batch)
+                loss = criterion(clean_batch, denoised_batch)
+                loss.backward()
+                optimizer.step()
+                avg_loss += loss.item()
+                
+                it.set_postfix(
+                    ordered_dict={
+                        "avg_epoch_loss": f"{avg_loss / batch_no:.4f}",
+                        "epoch": epoch_no,
+                    },
+                    refresh=True,
+                )
+            if lr_scheduler is not None:
+                lr_scheduler.step()
+        
+        writer.add_scalar('Loss/Train', avg_loss / batch_no, epoch_no)
+            
+        if valid_loader is not None and (epoch_no + 1) % valid_epoch_interval == 0:
+            model.eval()
+            avg_loss_valid = 0
+            with torch.no_grad():
+                with tqdm(valid_loader) as it:
+                    for batch_no, (clean_batch, noisy_batch) in enumerate(it, start=1):
+                        clean_batch, noisy_batch = clean_batch.to(device), noisy_batch.to(device)
+                        denoised_batch = model(noisy_batch)
+                        loss = criterion(clean_batch, denoised_batch)
+                        avg_loss_valid += loss.item()
+                        it.set_postfix(
+                            ordered_dict={
+                                "valid_avg_epoch_loss": f"{avg_loss_valid / batch_no:.4f}",
+                                "epoch": epoch_no,
+                            },
+                            refresh=True,
+                        )
+            
+            writer.add_scalar('Loss/Validation', avg_loss_valid / batch_no, epoch_no)
+            
+            if best_valid_loss > avg_loss_valid/batch_no:
+                best_valid_loss = avg_loss_valid/batch_no
+                print("\n best loss is updated to ",f"{avg_loss_valid / batch_no:.4f}","at Epoch", epoch_no+1)
+                
+                if foldername != "":
+                    torch.save(model.state_dict(), output_path)
+    
+    torch.save(model.state_dict(), final_path)
     
     
    

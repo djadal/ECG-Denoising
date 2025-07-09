@@ -8,7 +8,7 @@ from pathlib import Path
 
 from data_preparation import Data_Preparation
 
-from trainer import train, evaluate, train_gan
+from trainer import train_diffusion, train_gan, train_dl
 
 from torch.utils.data import DataLoader, Subset, ConcatDataset, TensorDataset
 
@@ -19,9 +19,10 @@ if __name__ == "__main__":
     parser = argparse.ArgumentParser(description="ECG Denoising")
     parser.add_argument("--exp_name", type=str, choices=[
         "DeScoD",
+        "DRNN",
         "ECG_GAN",
         ""
-    ], default="ECG_GAN", help="Experiment name")
+    ], default="DRNN", help="Experiment name")
     parser.add_argument('--device', default='cuda:0' if torch.cuda.is_available() else 'cpu', help='Device')
     parser.add_argument('--n_type', type=int, default=1, help='noise version')
     
@@ -35,6 +36,10 @@ if __name__ == "__main__":
     foldername = f"./check_points/{args.exp_name}/noise_type_" + str(args.n_type) + "/"
     print('folder:', foldername)
     os.makedirs(foldername, exist_ok=True)
+    
+    timestamp = datetime.datetime.now().strftime("%Y%m%d_%H%M%S")
+    log_dir = f"./logs/{args.exp_name}/noise_type_" + str(args.n_type) + f"/{timestamp}"
+    os.makedirs(log_dir, exist_ok=True)
     
     # Load Data
     [X_train, y_train, X_test, y_test] = Data_Preparation(args.n_type)
@@ -73,8 +78,18 @@ if __name__ == "__main__":
         
         base_model = ConditionalModel(config['train']['feats']).to(args.device)
         model = DDPM(base_model, config, args.device)
-        train(model, config['train'], train_loader, args.device, 
-        valid_loader=val_loader, valid_epoch_interval=args.val_interval, foldername=foldername)
+        train_diffusion(model, config['train'], train_loader, args.device, 
+        valid_loader=val_loader, valid_epoch_interval=args.val_interval, foldername=foldername, log_dir=log_dir)
+        
+    # DRNN
+    elif (args.exp_name == "DRNN"):
+        from DRNN.model import DRDNN
+        model = DRDNN(input_size=config['model']['input_size'],
+                      hidden_size=config['model']['hidden_size'],
+                      num_layers=config['model']['num_layers']).to(args.device)
+        
+        train_dl(model, config['train'], train_loader, args.device, 
+        valid_loader=val_loader, valid_epoch_interval=args.val_interval, foldername=foldername, log_dir=log_dir)
         
     # ECG_GAN
     elif (args.exp_name == "ECG_GAN"):
@@ -84,7 +99,7 @@ if __name__ == "__main__":
         discriminator = Discriminator(input_channels=config['discriminator']['feats']).to(args.device)
         
         train_gan(generator, discriminator, config['train'], train_loader ,args.device,
-                  valid_loader=val_loader, valid_epoch_interval=args.val_interval, foldername=foldername)
+                  valid_loader=val_loader, valid_epoch_interval=args.val_interval, foldername=foldername, log_dir=log_dir)
     
     
     #eval final
@@ -92,14 +107,14 @@ if __name__ == "__main__":
     # evaluate(model, val_loader, 1, args.device, foldername=foldername)
     
     #eval best
-    print('eval best')
-    output_path = foldername + "/model.pth"
-    model.load_state_dict(torch.load(output_path))
-    evaluate(model, val_loader, 1, args.device, foldername=foldername)
+    # print('eval best')
+    # output_path = foldername + "/model.pth"
+    # model.load_state_dict(torch.load(output_path))
+    # evaluate(model, val_loader, 1, args.device, foldername=foldername)
     
     #don't use before final model is determined
-    print('eval test')
-    evaluate(model, test_loader, 1, args.device, foldername=foldername)
+    # print('eval test')
+    # evaluate(model, test_loader, 1, args.device, foldername=foldername)
     
     
     
