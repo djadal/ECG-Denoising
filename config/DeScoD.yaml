@@ -7,6 +7,10 @@ train:
   batch_size: 96 
   lr_scheduler:
     use: true
+    type: "StepLR"
+    step_size: 150
+    gamma: 0.1
+    verbose: true
   optimizer:
     type: "Adam"
     lr: 1.0e-3

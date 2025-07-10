@@ -6,7 +6,7 @@ train:
     lr: 0.0001
   lr_scheduler:
     use: false
-  criterion: "MSELoss"
+  criterion: "SSDLoss"
 
 model:
   in_channels: 1

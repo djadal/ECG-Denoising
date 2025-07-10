@@ -6,7 +6,7 @@ train:
     lr: 0.001
   lr_scheduler:
     use: false
-  criterion: "MSELoss"
+  criterion: "SSDLoss"
 
 model:
   filters: 16

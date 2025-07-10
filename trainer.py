@@ -4,7 +4,8 @@ import torch.optim as optim
 from torch.utils.tensorboard import SummaryWriter
 from tqdm import tqdm
 import pickle
-import metrics
+from utils.loss_function import SSDLoss, CombinedSSDMSELoss, CombinedSSDMADLoss, SADLoss, MADLoss
+from utils.train_utils import LRScheduler, EarlyStopping
 
 def train_diffusion(model, config, train_loader, device, valid_loader=None, valid_epoch_interval=5, foldername="", log_dir=None):
 
@@ -210,6 +211,14 @@ def train_dl(model, config, train_loader, device, valid_loader=None, valid_epoch
     criterion = config.get('criterion', 'MSELoss')
     if criterion == 'MSELoss':
         criterion = torch.nn.MSELoss()
+    elif criterion == 'SSDLoss':
+        criterion = SSDLoss()
+    elif criterion == 'CombinedSSDMADLoss':
+        criterion = CombinedSSDMADLoss()
+    
+    # metrics for tracking
+    ssd_metric = SSDLoss()
+    mad_metric = MADLoss()
     
     if foldername != "":
         output_path = foldername + "/model.pth"
@@ -217,11 +226,15 @@ def train_dl(model, config, train_loader, device, valid_loader=None, valid_epoch
     
     # lr_scheduler config
     if config['lr_scheduler'].get("use", False):
-        lr_scheduler = torch.optim.lr_scheduler.StepLR(
-            optimizer, step_size=150, gamma=.1, verbose=True
-        )
+        lr_scheduler = LRScheduler(config.get('lr_scheduler', {}))
     else:
         lr_scheduler = None
+        
+    # Early stopping config
+    if config['early_stopping'].get("use", False):
+        early_stopping = EarlyStopping(config.get('early_stopping', {}))
+    else:
+        early_stopping = None
     
     best_valid_loss = 1e15
     writer = SummaryWriter(log_dir=log_dir)
@@ -229,6 +242,8 @@ def train_dl(model, config, train_loader, device, valid_loader=None, valid_epoch
     # training loop
     for epoch_no in range(config["epochs"]):
         avg_loss = 0
+        avg_ssd = 0
+        avg_mad = 0
         model.train()
         
         with tqdm(train_loader) as it:
@@ -237,10 +252,16 @@ def train_dl(model, config, train_loader, device, valid_loader=None, valid_epoch
                 optimizer.zero_grad()
                 
                 denoised_batch = model(noisy_batch)
-                loss = criterion(clean_batch, denoised_batch)
+                loss = criterion(denoised_batch, clean_batch)
                 loss.backward()
                 optimizer.step()
+                
+                ssd_value = ssd_metric(denoised_batch, clean_batch).item()
+                mad_value = mad_metric(denoised_batch, clean_batch).item()
+                
                 avg_loss += loss.item()
+                avg_ssd += ssd_value
+                avg_mad += mad_value
                 
                 it.set_postfix(
                     ordered_dict={
@@ -249,21 +270,34 @@ def train_dl(model, config, train_loader, device, valid_loader=None, valid_epoch
                     },
                     refresh=True,
                 )
-            if lr_scheduler is not None:
+            if lr_scheduler is not None and config['lr_scheduler']['type'] != "ReduceLROnPlateau":
                 lr_scheduler.step()
         
+        # Log training metrics
         writer.add_scalar('Loss/Train', avg_loss / batch_no, epoch_no)
+        writer.add_scalar('SSD/Train', avg_ssd / batch_no, epoch_no)
+        writer.add_scalar('MAD/Train', avg_mad / batch_no, epoch_no)
             
         if valid_loader is not None and (epoch_no + 1) % valid_epoch_interval == 0:
             model.eval()
             avg_loss_valid = 0
+            avg_ssd_valid = 0
+            avg_mad_valid = 0
+            
             with torch.no_grad():
                 with tqdm(valid_loader) as it:
                     for batch_no, (clean_batch, noisy_batch) in enumerate(it, start=1):
                         clean_batch, noisy_batch = clean_batch.to(device), noisy_batch.to(device)
                         denoised_batch = model(noisy_batch)
-                        loss = criterion(clean_batch, denoised_batch)
+                        
+                        loss = criterion(denoised_batch, clean_batch)
+                        ssd_value = ssd_metric(denoised_batch, clean_batch).item()
+                        mad_value = mad_metric(denoised_batch, clean_batch).item()
+                        
                         avg_loss_valid += loss.item()
+                        avg_ssd_valid += ssd_value
+                        avg_mad_valid += mad_value
+                        
                         it.set_postfix(
                             ordered_dict={
                                 "valid_avg_epoch_loss": f"{avg_loss_valid / batch_no:.4f}",
@@ -272,7 +306,13 @@ def train_dl(model, config, train_loader, device, valid_loader=None, valid_epoch
                             refresh=True,
                         )
             
+            # Log validation metrics
             writer.add_scalar('Loss/Validation', avg_loss_valid / batch_no, epoch_no)
+            writer.add_scalar('SSD/Validation', avg_ssd_valid / batch_no, epoch_no)
+            writer.add_scalar('MAD/Validation', avg_mad_valid / batch_no, epoch_no)
+            
+            if config['lr_scheduler']['type'] == "ReduceLROnPlateau":
+                lr_scheduler.step(avg_loss_valid / batch_no)
             
             if best_valid_loss > avg_loss_valid/batch_no:
                 best_valid_loss = avg_loss_valid/batch_no
@@ -280,6 +320,11 @@ def train_dl(model, config, train_loader, device, valid_loader=None, valid_epoch
                 
                 if foldername != "":
                     torch.save(model.state_dict(), output_path)
+                    
+            if early_stopping is not None:
+                if early_stopping.step(avg_loss_valid/batch_no):
+                    print(f"\nEarly stopping triggered after {epoch_no+1} epochs!")
+                    break
     
     torch.save(model.state_dict(), final_path)
     

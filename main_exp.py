@@ -22,9 +22,11 @@ if __name__ == "__main__":
         "DRNN",
         "FCN_DAE",
         "ACDAE",
+        "CBAM_DAE",
+        "DeepFilter",
         "ECG_GAN",
         ""
-    ], default="ACDAE", help="Experiment name")
+    ], default="DeepFilter", help="Experiment name")
     parser.add_argument('--device', default='cuda:0' if torch.cuda.is_available() else 'cpu', help='Device')
     parser.add_argument('--n_type', type=int, default=1, help='noise version')
     
@@ -86,7 +88,7 @@ if __name__ == "__main__":
         
     # DRNN
     elif (args.exp_name == "DRNN"):
-        from DRNN.model import DRDNN
+        from dl_filters.DRNN import DRDNN
         model = DRDNN(input_size=config['model']['input_size'],
                       hidden_size=config['model']['hidden_size'],
                       num_layers=config['model']['num_layers']).to(args.device)
@@ -96,7 +98,7 @@ if __name__ == "__main__":
         
     # FCN_DAE
     elif (args.exp_name == "FCN_DAE"):
-        from FCN_DAE.model import FCN_DAE
+        from dl_filters.FCN_DAE import FCN_DAE
         model = FCN_DAE(filters=config['model']['filters']).to(args.device)
         
         train_dl(model, config['train'], train_loader, args.device, 
@@ -104,8 +106,25 @@ if __name__ == "__main__":
 
     # ACDAE
     elif (args.exp_name == "ACDAE"):
-        from ACDAE.model import ACDAE
+        from dl_filters.ACDAE import ACDAE
         model = ACDAE(in_channels=config['model']['in_channels']).to(args.device)
+        
+        train_dl(model, config['train'], train_loader, args.device, 
+        valid_loader=val_loader, valid_epoch_interval=args.val_interval, foldername=foldername, log_dir=log_dir)
+        
+    # CBAM_DAE
+    elif (args.exp_name == "CBAM_DAE"):
+        from dl_filters.CBAM_DAE import AttentionSkipDAE2
+        model = AttentionSkipDAE2(signal_size=config['model']['signal_size'],
+                                  filters=config['model']['filters']).to(args.device)
+        
+        train_dl(model, config['train'], train_loader, args.device, 
+        valid_loader=val_loader, valid_epoch_interval=args.val_interval, foldername=foldername, log_dir=log_dir)
+        
+    # DeepFilter
+    elif (args.exp_name == "DeepFilter"):
+        from dl_filters.DeepFilter import DeepFilterModelLANLDilated
+        model = DeepFilterModelLANLDilated().to(args.device)
         
         train_dl(model, config['train'], train_loader, args.device, 
         valid_loader=val_loader, valid_epoch_interval=args.val_interval, foldername=foldername, log_dir=log_dir)
