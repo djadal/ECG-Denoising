@@ -1,5 +1,5 @@
 train:
-  epochs: 80
+  epochs: 100
   batch_size: 128
 
   optimizer:
@@ -30,4 +30,4 @@ model:
   filters: 16
 
 test:
-  batch_size: 50
+  batch_size: 32

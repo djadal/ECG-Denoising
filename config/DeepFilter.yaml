@@ -1,5 +1,5 @@
 train:
-  epochs: 100
+  epochs: 200
   batch_size: 128
 
   optimizer:
@@ -26,4 +26,4 @@ train:
   criterion: "CombinedSSDMADLoss"
 
 test:
-  batch_size: 50
+  batch_size: 32

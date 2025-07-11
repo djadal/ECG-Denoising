@@ -1,6 +1,6 @@
 train:
-  epochs: 80
-  batch_size: 64
+  epochs: 100
+  batch_size: 128
   optimizer:
     type: "Adam"
     lr: 0.001
@@ -12,4 +12,4 @@ model:
   filters: 16
 
 test:
-  batch_size: 50
+  batch_size: 32

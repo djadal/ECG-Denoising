@@ -12,4 +12,4 @@ model:
   in_channels: 1
 
 test:
-  batch_size: 50
+  batch_size: 32

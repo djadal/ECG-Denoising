@@ -314,15 +314,15 @@ def train_dl(model, config, train_loader, device, valid_loader=None, valid_epoch
             if config['lr_scheduler']['type'] == "ReduceLROnPlateau":
                 lr_scheduler.step(avg_loss_valid / batch_no)
             
-            if best_valid_loss > avg_loss_valid/batch_no:
-                best_valid_loss = avg_loss_valid/batch_no
-                print("\n best loss is updated to ",f"{avg_loss_valid / batch_no:.4f}","at Epoch", epoch_no+1)
+            if best_valid_loss > avg_ssd_valid/batch_no:
+                best_valid_loss = avg_ssd_valid/batch_no
+                print("\n best loss is updated to ",f"{avg_ssd_valid / batch_no:.4f}","at Epoch", epoch_no+1)
                 
                 if foldername != "":
                     torch.save(model.state_dict(), output_path)
                     
             if early_stopping is not None:
-                if early_stopping.step(avg_loss_valid/batch_no):
+                if early_stopping.step(avg_ssd_valid/batch_no):
                     print(f"\nEarly stopping triggered after {epoch_no+1} epochs!")
                     break
     
