@@ -1,0 +1,35 @@
+
+#type: args
+
+train:
+  epochs: 400
+  batch_size: 64
+  gradient_accumulate_every: 1
+  valid_epoch_interval: 10
+  condition: true
+  num_unet: 2
+  use_ema: true
+
+  optimizer:
+    type: "Radam"
+    lr: 1.0e-5
+    weight_decay: 0.
+
+base_model:
+  dim: 16
+  out_dim: 1
+  channels: 1
+  self_condition: true
+  num_unet: 2
+  condition: true
+
+diffusion:
+  signal_length: 512
+  timesteps: 50
+  loss_type: "l2"
+  objective: "pred_res_noise"
+  condition: true
+  test_res_or_noise: "res_noise"
+
+test:
+  batch_size: 64

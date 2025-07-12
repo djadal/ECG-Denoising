@@ -8,7 +8,7 @@ from pathlib import Path
 
 from data_preparation import Data_Preparation
 
-from trainer import train_diffusion, train_gan, train_dl
+from trainer import train_diffusion, train_gan, train_dl, train_eddm
 
 from torch.utils.data import DataLoader, Subset, ConcatDataset, TensorDataset
 
@@ -19,6 +19,7 @@ if __name__ == "__main__":
     parser = argparse.ArgumentParser(description="ECG Denoising")
     parser.add_argument("--exp_name", type=str, choices=[
         "DeScoD",
+        "EDDM",
         "DRNN",
         "FCN_DAE",
         "ACDAE",
@@ -26,7 +27,7 @@ if __name__ == "__main__":
         "DeepFilter",
         "ECG_GAN",
         ""
-    ], default="DeepFilter", help="Experiment name")
+    ], default="EDDM", help="Experiment name")
     parser.add_argument('--device', default='cuda:0' if torch.cuda.is_available() else 'cpu', help='Device')
     parser.add_argument('--n_type', type=int, default=1, help='noise version')
     
@@ -78,12 +79,22 @@ if __name__ == "__main__":
     print('Loading model...')
     # DeScoD-ECG
     if (args.exp_name == "DeScoD"):
-        from Score_based_ECG_Denoising.main_model import DDPM
-        from Score_based_ECG_Denoising.denoising_model_small import ConditionalModel
+        from generation_filters.DeScoD_model import ConditionalModel
+        from generation_filters.DeScoD_diffusion import DDPM
         
         base_model = ConditionalModel(config['train']['feats']).to(args.device)
         model = DDPM(base_model, config, args.device)
         train_diffusion(model, config['train'], train_loader, args.device, 
+        valid_loader=val_loader, valid_epoch_interval=args.val_interval, foldername=foldername, log_dir=log_dir)
+        
+    # EDDM
+    if (args.exp_name == "EDDM"):
+        from generation_filters.EDDM_model import UnetRes
+        from generation_filters.EDDM_diffusion import ResidualDiffusion
+        
+        base_model = UnetRes(**config['base_model']).to(args.device)
+        model = ResidualDiffusion(model=base_model, **config['diffusion']).to(args.device)
+        train_eddm(model, config['train'], train_loader, args.device, 
         valid_loader=val_loader, valid_epoch_interval=args.val_interval, foldername=foldername, log_dir=log_dir)
         
     # DRNN

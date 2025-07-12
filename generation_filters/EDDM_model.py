@@ -6,11 +6,13 @@ from torch import einsum
 from functools import partial
 import math
 from einops import rearrange, reduce
+from utils import identity, exists, default
 
 class DAPPM(nn.Module):
     
     """ following @ydhongHIT 's Deep Aggregation Pyramid Pooling Module(DAPPM) """
-    """ https://github.com/ydhongHIT/DDRNet/blob/main/segmentation/DDRNet_23.py #L94 """
+    """ https://github.com/ydhongHIT/DDRNet/blob/main/segmentation/DDRNet_23.py#L94 """
+    """ parameters set by EDDM: A Novel ECG Denoising Method Using Dual-Path Diffusion Model"""
     def __init__(self, inplanes, branch_planes, outplanes, bn_mom=0.1):
         super(DAPPM, self).__init__()
         self.scale1 = nn.Sequential(nn.AvgPool1d(kernel_size=3, stride=2, padding=1),
@@ -89,20 +91,6 @@ class DAPPM(nn.Module):
        
         out = self.compression(torch.cat(x_list, 1)) + self.shortcut(x)
         return out
-    
-    
-def exists(x):
-    return x is not None
-
-
-def default(val, d):
-    if exists(val):
-        return val
-    return d() if callable(d) else d
-
-
-def identity(t, *args, **kwargs):
-    return t    
 
 class Residual(nn.Module):
     def __init__(self, fn):
@@ -134,18 +122,18 @@ class WeightStandardizedConv1d(nn.Conv1d):
         eps = 1e-5 if x.dtype == torch.float32 else 1e-3
 
         weight = self.weight
-        mean = reduce(weight, 'o ... -> o 1 1 1', 'mean')
-        var = reduce(weight, 'o ... -> o 1 1 1',
+        mean = reduce(weight, 'o ... -> o 1 1', 'mean')
+        var = reduce(weight, 'o ... -> o 1 1',
                      partial(torch.var, unbiased=False))
         normalized_weight = (weight - mean) * (var + eps).rsqrt()
 
-        return F.Conv1d(x, normalized_weight, self.bias, self.stride, self.padding, self.dilation, self.groups)
+        return F.conv1d(x, normalized_weight, self.bias, self.stride, self.padding, self.dilation, self.groups)
 
 
 class LayerNorm(nn.Module):
     def __init__(self, dim):
         super().__init__()
-        self.g = nn.Parameter(torch.ones(1, dim, 1, 1))
+        self.g = nn.Parameter(torch.ones(1, dim, 1))
 
     def forward(self, x):
         eps = 1e-5 if x.dtype == torch.float32 else 1e-3
@@ -261,10 +249,10 @@ class Attention(nn.Module):
         self.to_out = nn.Conv1d(hidden_dim, dim, 1)
 
     def forward(self, x):
-        b, c, h, w = x.shape
+        b, c, l = x.shape
         qkv = self.to_qkv(x).chunk(3, dim=1)
         q, k, v = map(lambda t: rearrange(
-            t, 'b (h c) x y -> b h c (x y)', h=self.heads), qkv)
+            t, 'b (h c) l -> b h c l', h=self.heads), qkv)
 
         q = q * self.scale
 
@@ -272,7 +260,8 @@ class Attention(nn.Module):
         attn = sim.softmax(dim=-1)
         out = einsum('b h i j, b h d j -> b h i d', attn, v)
 
-        out = rearrange(out, 'b h (x y) d -> b (h d) x y', x=h, y=w)
+        out = rearrange(out, 'b h l d -> b (h d) l')
+        
         return self.to_out(out)
 
 
@@ -343,8 +332,8 @@ class Unet(nn.Module):
             is_first = ind == 0
 
             self.downs.append(nn.ModuleList([
-                Downsample(dim_in, dim_out) if not is_first else identity,
-                block_klass(dim_in, dim_in, time_emb_dim=time_dim),
+                Downsample(dim_in, dim_in) if not is_first else nn.Identity(),
+                block_klass(dim_in, dim_out, time_emb_dim=time_dim),
             ]))
 
         mid_dim = dims[-1]
@@ -356,14 +345,15 @@ class Unet(nn.Module):
             is_last = ind == (num_resolutions - 1)
 
             self.ups.append(nn.ModuleList([
-                block_klass(dim_out + dim_in, dim_out, time_emb_dim=time_dim),
-                block_klass(dim_out + dim_in, dim_out, time_emb_dim=time_dim) if not is_last else identity,
-                Upsample(dim_out, dim_in) if not is_last else identity,
+                block_klass(dim_out + dim_out, dim_in, time_emb_dim=time_dim),
+                block_klass(dim_in, dim_in, time_emb_dim=time_dim) if not is_last else None,
+                Upsample(dim_in, dim_in) if not is_last else nn.Identity(),
             ]))
 
         default_out_dim = channels * (1 if not learned_variance else 2)
         self.out_dim = default(out_dim, default_out_dim)
 
+        self.dapp = DAPPM(dim, dim * 2, dim)
         self.final_res_block = block_klass(dim * 2, dim, time_emb_dim=time_dim)
         self.final_conv = nn.Conv1d(dim, self.out_dim, 1)
 
@@ -381,9 +371,9 @@ class Unet(nn.Module):
 
         for downsample, downblock in self.downs:
             x = downsample(x)
-            h.append(x)
 
             x = downblock(x)
+            h.append(x)
 
         x = self.mid_block1(x, t)
         x = self.mid_attn(x)
@@ -392,11 +382,11 @@ class Unet(nn.Module):
         for upblock1, upblock2, upsample in self.ups:
             x = torch.cat((x, h.pop()), dim=1)
             x = upblock1(x, t)
-            x = upblock2(x, t)
+            x = upblock2(x, t) if upblock2 is not None else x
 
             x = upsample(x)
 
-        x = torch.cat((x, s), dim=1)
+        x = torch.cat((x, self.dapp(s)), dim=1)
 
         x = self.final_res_block(x, t)
         return self.final_conv(x)
@@ -405,7 +395,7 @@ class Unet(nn.Module):
 class UnetRes(nn.Module):
     
     """ following @nachifur 's Residual Denoising Diffusion Models(RDDM) """
-    """ https://github.com/nachifur/RDDM/blob/main/experiments/0_Partially_path-independent_generation/src/residual_denoising_diffusion_pytorch.py #L437 """
+    """ https://github.com/nachifur/RDDM/blob/main/experiments/0_Partially_path-independent_generation/src/residual_denoising_diffusion_pytorch.py#L437 """
     def __init__(
         self,
         dim,
@@ -512,4 +502,3 @@ class UnetRes(nn.Module):
             elif self.objective == "pred_x0":
                 time = time[0]
             return [self.unet0(x, time, x_self_cond=x_self_cond)]
-    

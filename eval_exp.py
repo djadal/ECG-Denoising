@@ -60,8 +60,8 @@ def evaluate_model(args):
             
             # DeScoD-ECG
             if args.exp_name == "DeScoD":
-                from Score_based_ECG_Denoising.main_model import DDPM
-                from Score_based_ECG_Denoising.denoising_model_small import ConditionalModel
+                from generation_filters.DeScoD_model import ConditionalModel
+                from generation_filters.DeScoD_diffusion import DDPM
                 
                 base_model = ConditionalModel(config['train']['feats']).to(args.device)
                 model = DDPM(base_model, config, args.device)
