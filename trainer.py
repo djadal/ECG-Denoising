@@ -334,6 +334,7 @@ def train_eddm(model, config, train_loader, device, valid_loader=None, valid_epo
     from ema_pytorch import EMA
     train_num_steps = config.get("epochs", 500)
     gradient_accumulate_every = config.get("gradient_accumulate_every", 1)
+    valid_epoch_interval = config.get("valid_epoch_interval", 1)
     condition = config.get("condition", False)
     
     num_unet = config.get("num_unet", 2)
@@ -352,28 +353,43 @@ def train_eddm(model, config, train_loader, device, valid_loader=None, valid_epo
         output_path = foldername + "/model.pth"
         final_path = foldername + "/final.pth"
     
-    epoch_no = 0
+    step = 0
     best_valid_loss = 1e15
     writer = SummaryWriter(log_dir=log_dir)
+
+    data_iter = iter(train_loader)
     
-    for epoch_no in range(train_num_steps):
-        model.train()
-        
-        if num_unet == 1:
-            total_loss = [0]
-        elif num_unet == 2:
-            total_loss = [0, 0]
-        
-        with tqdm(train_loader) as it:
-            for batch_no, batch_data in enumerate(it, start=1):
-                if condition:
-                    clean_batch, noisy_batch = batch_data
-                    clean_batch, noisy_batch = clean_batch.to(device), noisy_batch.to(device)
-                    data = [clean_batch, noisy_batch]
-                else:
-                    clean_batch = batch_data[0] if isinstance(batch_data, list) else batch_data
-                    clean_batch = clean_batch.to(device)
-                    data = clean_batch
+    with tqdm(initial=step, total=train_num_steps) as pbar:
+        while step < train_num_steps:
+            model.train()
+            
+            if num_unet == 1:
+                total_loss = [0]
+            elif num_unet == 2:
+                total_loss = [0, 0]
+            
+            for _ in range(gradient_accumulate_every):
+                try:
+                    if condition:
+                        clean_batch, noisy_batch = next(data_iter)
+                        clean_batch, noisy_batch = clean_batch.to(device), noisy_batch.to(device)
+                        data = [clean_batch, noisy_batch]
+                    else:
+                        clean_batch = next(data_iter)
+                        clean_batch = clean_batch[0] if isinstance(clean_batch, list) else clean_batch
+                        clean_batch = clean_batch.to(device)
+                        data = clean_batch
+                except StopIteration:
+                    data_iter = iter(train_loader)
+                    if condition:
+                        clean_batch, noisy_batch = next(data_iter)
+                        clean_batch, noisy_batch = clean_batch.to(device), noisy_batch.to(device)
+                        data = [clean_batch, noisy_batch]
+                    else:
+                        clean_batch = next(data_iter)
+                        clean_batch = clean_batch[0] if isinstance(clean_batch, list) else clean_batch
+                        clean_batch = clean_batch.to(device)
+                        data = clean_batch
                 
                 loss = model(data)
                 
@@ -383,66 +399,66 @@ def train_eddm(model, config, train_loader, device, valid_loader=None, valid_epo
                 
                 for i in range(num_unet):
                     loss[i].backward()
-                
-                it.set_postfix(
-                    ordered_dict={
-                        "avg_loss_unet0": f"{total_loss[0] / batch_no:.4f}",
-                        "avg_loss_unet1": f"{total_loss[1] / batch_no:.4f}" if num_unet == 2 else "",
-                        "epoch": epoch_no,
-                    },
-                    refresh=True,
-                )
 
-        torch.nn.utils.clip_grad_norm_(model.parameters(), 1.0)
+            torch.nn.utils.clip_grad_norm_(model.parameters(), 1.0)
 
-        if num_unet == 1:
-            opt0.step()
-            opt0.zero_grad()
-        elif num_unet == 2:
-            opt0.step()
-            opt0.zero_grad()
-            opt1.step()
-            opt1.zero_grad()
+            if num_unet == 1:
+                opt0.step()
+                opt0.zero_grad()
+            elif num_unet == 2:
+                opt0.step()
+                opt0.zero_grad()
+                opt1.step()
+                opt1.zero_grad()
 
-        if use_ema:
-            ema.update()
+            if use_ema:
+                ema.update()
 
-        for i in range(num_unet):
-            writer.add_scalar(f'Loss/Train/UNet{i}', total_loss[i] / len(train_loader), epoch_no)
-
-        if valid_loader is not None and (epoch_no + 1) % valid_epoch_interval == 0:
-            model.eval()
-            avg_loss_valid = 0
+            step += 1
+            pbar.update(1)
             
-            with torch.no_grad():
-                with tqdm(valid_loader) as it:
-                    for batch_no, (clean_batch, noisy_batch) in enumerate(it, start=1):
-                        clean_batch, noisy_batch = clean_batch.to(device), noisy_batch.to(device)
+            if num_unet == 1:
+                pbar.set_description(f'loss_unet0: {total_loss[0]:.4f}')
+            elif num_unet == 2:
+                pbar.set_description(f'loss_unet0: {total_loss[0]:.4f},loss_unet1: {total_loss[1]:.4f}')
 
-                        [_, denoised_batch] = model.sample([noisy_batch, 0], batch_size=noisy_batch.shape[0])
-                        loss = SSDLoss()(denoised_batch, clean_batch).item()
-                        
-                        avg_loss_valid += loss
-                        
-                        it.set_postfix(
-                        ordered_dict={
-                            "valid_avg_epoch_loss": f"{avg_loss_valid / batch_no:.4f}",
-                            "epoch": epoch_no,
-                        },
-                        refresh=True,
-                        )
+            for i in range(num_unet):
+                writer.add_scalar(f'Loss/Train/UNet{i}', total_loss[i], step)
 
-                writer.add_scalar('Loss/Validation', avg_loss_valid / batch_no, epoch_no)
-            
-            if best_valid_loss > avg_loss_valid / batch_no:
-                best_valid_loss = avg_loss_valid / batch_no
-                print(f"\n Best loss updated to {avg_loss_valid / batch_no:.4f} at epoch {epoch_no}")
-                
-                if foldername != "":
-                    if use_ema:
-                        torch.save(ema.ema_model.state_dict(), output_path)
-                    else:
-                        torch.save(model.state_dict(), output_path)
+            if step % valid_epoch_interval == 0:
+                if valid_loader is not None:
+                    model.eval()
+                    avg_loss_valid = 0
+                    
+                    with torch.no_grad():
+                        with tqdm(valid_loader) as it:
+                            for batch_no, (clean_batch, noisy_batch) in enumerate(it, start=1):
+                                clean_batch, noisy_batch = clean_batch.to(device), noisy_batch.to(device)
+
+                                [_, denoised_batch] = model.sample([noisy_batch, 0], batch_size=noisy_batch.shape[0])
+                                loss = SSDLoss()(denoised_batch, clean_batch).item()
+                                
+                                avg_loss_valid += loss
+                                
+                                it.set_postfix(
+                                ordered_dict={
+                                    "valid_avg_epoch_loss": f"{avg_loss_valid / batch_no:.4f}",
+                                    "epoch": step,
+                                },
+                                refresh=True,
+                                )
+
+                        writer.add_scalar('Loss/Validation', avg_loss_valid / batch_no, step)
+                    
+                    if best_valid_loss > avg_loss_valid / batch_no:
+                        best_valid_loss = avg_loss_valid / batch_no
+                        print(f"\n Best loss updated to {avg_loss_valid / batch_no:.4f} at step {step}")
+                        
+                        if foldername != "":
+                            if use_ema:
+                                torch.save(ema.ema_model.state_dict(), output_path)
+                            else:
+                                torch.save(model.state_dict(), output_path)
 
     if foldername != "":
         if use_ema:

@@ -259,7 +259,8 @@ class ResidualDiffusion(nn.Module):
                                   [self.alphas_cumsum[t]*self.num_timesteps,
                                       self.betas_cumsum[t]*self.num_timesteps],
                                   x_self_cond)
-        maybe_clip = partial(torch.clamp, min=-1., max=1.) if clip_denoised else identity
+        # maybe_clip = partial(torch.clamp, min=-1., max=1.) if clip_denoised else identity
+        maybe_clip = identity
 
         if self.objective == 'pred_res_noise':
             if self.test_res_or_noise == "res_noise":
