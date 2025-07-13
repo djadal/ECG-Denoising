@@ -347,7 +347,7 @@ class ResidualDiffusion(nn.Module):
         if not last:
             img_list = []
 
-        for t in tqdm(reversed(range(0, self.num_timesteps)), desc='sampling loop time step', total=self.num_timesteps):
+        for t in reversed(range(0, self.num_timesteps)):
             self_cond = x_start if self.self_condition else None
             img, x_start = self.p_sample(
                 x_input, img, t, x_input_condition, self_cond)

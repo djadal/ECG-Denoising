@@ -11,7 +11,7 @@ train:
   use_ema: true
 
   optimizer:
-    type: "Radam"
+    type: "RAdam"
     lr: 1.0e-5
     weight_decay: 0.
 

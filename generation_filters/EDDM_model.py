@@ -359,7 +359,7 @@ class Unet(nn.Module):
 
     def forward(self, x, time, x_self_cond=None):
         if self.self_condition:
-            x_self_cond = default(x_self_cond, lambda: torch.zeros_like(x))
+            x_self_cond = default(x_self_cond, lambda: torch.zeros_like(x[:, :1, :]))
             x = torch.cat((x_self_cond, x), dim=1)
 
         x = self.init_conv(x) #　embedding s
