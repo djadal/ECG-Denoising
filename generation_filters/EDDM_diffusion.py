@@ -9,7 +9,7 @@ from functools import partial
 from einops import rearrange, reduce
 from tqdm import tqdm
 import random
-from utils import default, identity, unnormalize_to_zero_to_one, normalize_to_neg_one_to_one
+from .utils import default, identity, unnormalize_to_zero_to_one, normalize_to_neg_one_to_one
 
 ModelResPrediction = namedtuple(
     'ModelResPrediction', ['pred_res', 'pred_noise', 'pred_x_start'])

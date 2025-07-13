@@ -1,4 +1,4 @@
-qt_path: D:\ECG-Denoising\Data\prepared\QTDatabase.pkl
-nstdb_path: D:\ECG-Denoising\Data\prepared\NoiseBWL.pkl
+qt_path: ./Data/prepared/QTDatabase.pkl
+nstdb_path: ./Data/prepared/NoiseBWL.pkl
 
-rnd_test_path: D:\ECG-Denoising\Data\prepared\rnd_test.npy
+rnd_test_path: ./Data/prepared/rnd_test.npy
