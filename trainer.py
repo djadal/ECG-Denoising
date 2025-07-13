@@ -62,7 +62,8 @@ def train_diffusion(model, config, train_loader, device, valid_loader=None, vali
                 with tqdm(valid_loader) as it:
                     for batch_no, (clean_batch, noisy_batch) in enumerate(it, start=1):
                         clean_batch, noisy_batch = clean_batch.to(device), noisy_batch.to(device)
-                        loss = model(clean_batch, noisy_batch)
+                        denoised_batch = model.denoising(noisy_batch)
+                        loss = SSDLoss()(denoised_batch, clean_batch).item()
                         avg_loss_valid += loss.item()
                         it.set_postfix(
                             ordered_dict={
