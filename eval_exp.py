@@ -65,13 +65,19 @@ def evaluate_model(args):
                 
                 base_model = ConditionalModel(config['train']['feats']).to(args.device)
                 model = DDPM(base_model, config, args.device)
+
+            # EDDM
+            elif (args.exp_name == "EDDM"):
+                from generation_filters.EDDM_model import UnetRes
+                from generation_filters.EDDM_diffusion import ResidualDiffusion
+                
+                base_model = UnetRes(**config['base_model']).to(args.device)
+                model = ResidualDiffusion(model=base_model, **config['diffusion']).to(args.device)
                 
             # DRNN
             elif args.exp_name == "DRNN":
                 from dl_filters.DRNN import DRDNN
-                model = DRDNN(input_size=config['model']['input_size'],
-                            hidden_size=config['model']['hidden_size'],
-                            num_layers=config['model']['num_layers']).to(args.device)
+                model = DRDNN(**config['model']).to(args.device)
                 
             # FCN_DAE
             elif args.exp_name == "FCN_DAE":
@@ -87,7 +93,12 @@ def evaluate_model(args):
             elif args.exp_name == "CBAM_DAE":
                 from dl_filters.CBAM_DAE import AttentionSkipDAE2
                 model = AttentionSkipDAE2(signal_size=config['model']['signal_size']).to(args.device)
-                
+            
+            # TCDAE
+            elif (args.exp_name == "TCDAE"):
+                from dl_filters.TCDAE import TCDAE
+                model = TCDAE(**config['model']).to(args.device)
+                        
             # DeepFilter
             elif args.exp_name == "DeepFilter":
                 from dl_filters.DeepFilter import DeepFilterModelLANLDilated
@@ -95,7 +106,7 @@ def evaluate_model(args):
                 
             # ECG_GAN
             elif args.exp_name == "ECG_GAN":
-                from ECG_GAN.model import Generator
+                from generation_filters.ECGAN import Generator
                 model = Generator(input_channels=config['generator']['feats']).to(args.device)
 
             model_path = foldername + "/model.pth"
@@ -118,6 +129,16 @@ def evaluate_model(args):
                             denoised_batch = denoised_batch / shots
                         else:
                             denoised_batch = model.denoise(noisy_batch)
+                    elif args.exp_name == "EDDM":
+                        shots = args.shots
+                        if shots > 1:
+                            denoised_batch = 0
+                            for _ in range(shots):
+                                [_, denoised] = model.sample([noisy_batch, 0], batch_size=noisy_batch.shape[0])
+                                denoised_batch += denoised
+                            denoised_batch = denoised_batch / shots
+                        else:
+                            [_, denoised_batch] = model.sample([noisy_batch, 0], batch_size=noisy_batch.shape[0])
                     elif args.exp_name == "ECG_GAN":
                         batch_size = noisy_batch.shape[0]
                         z = torch.randn(batch_size, 512, 8).to(args.device)
@@ -202,15 +223,17 @@ if __name__ == "__main__":
         "FIR",
         "IIR",
         "DeScoD",
+        "EDDM",
         "DRNN",
         "FCN_DAE",
         "ACDAE",
         "CBAM_DAE",
+        "TCDAE",
         "DeepFilter",
         "ECG_GAN",
     ], default="DeepFilter", help="Experiment name")
     parser.add_argument('--device', default='cuda:0' if torch.cuda.is_available() else 'cpu', help='Device')
-    parser.add_argument('--shots', type=int, default=1, help='Number of shots for DeScoD model')
+    parser.add_argument('--shots', type=int, default=1, help='Number of shots for Diffusion model')
     
     args = parser.parse_args()
     
