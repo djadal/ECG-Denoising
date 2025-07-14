@@ -1,5 +1,5 @@
 train:
-  epochs: 200
+  epochs: 500
   batch_size: 128
   optimizer:
     type: "Adam"

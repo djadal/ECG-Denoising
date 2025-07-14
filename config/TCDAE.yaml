@@ -1,6 +1,6 @@
 train:
   epochs: 500
-  batch_size: 128
+  batch_size: 64
 
   optimizer:
     type: "Adam"
@@ -23,7 +23,14 @@ train:
     patience: 10
     verbose: true
 
-  criterion: "CombinedSSDMADLoss"
+  criterion: "HuberFreqLoss"
+
+model:
+  signal_size: 512
+  head_size: 64
+  num_heads: 8
+  ff_dim: 64
+  num_transformer_layers: 6
 
 test:
   batch_size: 32

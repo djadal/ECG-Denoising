@@ -4,7 +4,7 @@ import torch.optim as optim
 from torch.utils.tensorboard import SummaryWriter
 from tqdm import tqdm
 import pickle
-from utils.loss_function import SSDLoss, CombinedSSDMSELoss, CombinedSSDMADLoss, SADLoss, MADLoss
+from utils.loss_function import SSDLoss, CombinedSSDMSELoss, CombinedSSDMADLoss, MADLoss, HuberFreqLoss
 from utils.train_utils import LRScheduler, EarlyStopping
 
 def train_diffusion(model, config, train_loader, device, valid_loader=None, valid_epoch_interval=5, foldername="", log_dir=None):
@@ -216,6 +216,8 @@ def train_dl(model, config, train_loader, device, valid_loader=None, valid_epoch
         criterion = SSDLoss()
     elif criterion == 'CombinedSSDMADLoss':
         criterion = CombinedSSDMADLoss()
+    elif criterion == 'HuberFreqLoss':
+        criterion = HuberFreqLoss()
     
     # metrics for tracking
     ssd_metric = SSDLoss()

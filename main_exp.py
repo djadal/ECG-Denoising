@@ -24,6 +24,7 @@ if __name__ == "__main__":
         "FCN_DAE",
         "ACDAE",
         "CBAM_DAE",
+        "TCDAE",
         "DeepFilter",
         "ECG_GAN",
         ""
@@ -100,9 +101,7 @@ if __name__ == "__main__":
     # DRNN
     elif (args.exp_name == "DRNN"):
         from dl_filters.DRNN import DRDNN
-        model = DRDNN(input_size=config['model']['input_size'],
-                      hidden_size=config['model']['hidden_size'],
-                      num_layers=config['model']['num_layers']).to(args.device)
+        model = DRDNN(**config['model']).to(args.device)
         
         train_dl(model, config['train'], train_loader, args.device, 
         valid_loader=val_loader, valid_epoch_interval=args.val_interval, foldername=foldername, log_dir=log_dir)
@@ -126,8 +125,15 @@ if __name__ == "__main__":
     # CBAM_DAE
     elif (args.exp_name == "CBAM_DAE"):
         from dl_filters.CBAM_DAE import AttentionSkipDAE2
-        model = AttentionSkipDAE2(signal_size=config['model']['signal_size'],
-                                  filters=config['model']['filters']).to(args.device)
+        model = AttentionSkipDAE2(**config['model']).to(args.device)
+        
+        train_dl(model, config['train'], train_loader, args.device, 
+        valid_loader=val_loader, valid_epoch_interval=args.val_interval, foldername=foldername, log_dir=log_dir)
+        
+    # TCDAE
+    elif (args.exp_name == "TCDAE"):
+        from dl_filters.TCDAE import TCDAE
+        model = TCDAE(**config['model']).to(args.device)
         
         train_dl(model, config['train'], train_loader, args.device, 
         valid_loader=val_loader, valid_epoch_interval=args.val_interval, foldername=foldername, log_dir=log_dir)
@@ -142,15 +148,11 @@ if __name__ == "__main__":
         
     # ECG_GAN
     elif (args.exp_name == "ECG_GAN"):
-        from ECG_GAN.model import Generator, Discriminator
+        from generation_filters.ECGAN import Generator, Discriminator
 
         generator = Generator(input_channels=config['generator']['feats']).to(args.device)
         discriminator = Discriminator(input_channels=config['discriminator']['feats']).to(args.device)
         
         train_gan(generator, discriminator, config['train'], train_loader ,args.device,
                   valid_loader=val_loader, valid_epoch_interval=args.val_interval, foldername=foldername, log_dir=log_dir)
-    
-    
-    
-    
     
