@@ -10,8 +10,8 @@ train:
   use_ema: true
 
   optimizer:
-    type: "RAdam"
-    lr: 1.0e-5
+    type: "AdamW"
+    lr: 7.5e-6
     weight_decay: 0.
 
 base_model:

@@ -57,8 +57,9 @@ class CFM(nn.Module):
             nonlocal cond
             x = torch.cat((x, cond), dim=1) if exists(cond) else x
             return self.base_model(x=x, time=t.expand(x.shape[0]))
-
-        y0 = cond
+        
+        y0 = torch.randn_like(cond)
+        # y0 = cond
         t_start = 0
         t = torch.linspace(t_start, 1, steps + 1, device=self.device, dtype=step_cond.dtype)
         
@@ -95,8 +96,8 @@ class CFM(nn.Module):
         batch, _, dtype, device, _ = *input.shape[:2], input.dtype, self.device, self.sigma
 
         x1 = clean
-        # x0 = torch.randn_like(x1)
-        x0 = input
+        x0 = torch.randn_like(x1)
+        # x0 = input
         time = torch.rand((batch,), dtype=dtype, device=self.device)
         t = time.unsqueeze(-1).unsqueeze(-1)
         φ = (1 - t) * x0 + t * x1
@@ -150,7 +151,8 @@ class AdaCFM(nn.Module):
 
         def fn(t, x):
             nonlocal current_cond
-            return self.base_model(x=x, cond=current_cond, time=t.expand(x.shape[0]))
+            x = torch.cat((x, current_cond), dim=1) if exists(current_cond) else x
+            return self.base_model(x=x, time=t.expand(x.shape[0]))
         
         y0 = torch.randn_like(cond)
 
@@ -175,14 +177,12 @@ class AdaCFM(nn.Module):
                 sub_trajectory = odeint(fn, sub_batch, t, **self.odeint_kwargs)
                 out[mask] = sub_trajectory[-1]
             else:
-                sub_trajectory = self._iterative_sample(sub_batch, current_cond, t, current_steps)
+                sub_trajectory = self._iterative_sample(fn, sub_batch, t, current_steps)
                 out[mask] = sub_trajectory[-1]
-                start_idx = steps - current_steps
-                trajectories[start_idx:] = sub_trajectory
         
         return out, trajectories if not use_ode else out
 
-    def _iterative_sample(self, y0, cond, t, steps):
+    def _iterative_sample(self, fn, y0, t, steps):
         dt = t[1] - t[0]
         trajectory = [y0]
         x = y0
@@ -190,11 +190,11 @@ class AdaCFM(nn.Module):
         
         for i in range(steps):
             if method == "euler":
-                k1 = self.base_model(x=x, cond=cond, time=t[i])
+                k1 = fn(t[i], x)
                 x = x + dt * k1
             elif method == "midpoint":
-                k1 = self.base_model(x=x, cond=cond, time=t[i])
-                k2 = self.base_model(x=x + dt/2 * k1, cond=cond, time=t[i] + dt/2)
+                k1 = fn(t[i], x)
+                k2 = fn(t[i] + dt / 2, x + dt / 2 * k1)
                 x = x + dt * k2
             trajectory.append(x)
             
@@ -213,9 +213,9 @@ class AdaCFM(nn.Module):
         pred_time = self.adapt_scheduler(φ)
         flow = x1 - x0
         cond = input
-
+        φ = torch.cat((φ, cond), dim=1) if exists(cond) else φ
         pred = self.base_model(
-            x=φ, cond=cond, time=time
+            x=φ, time=time
         )
 
         loss = F.mse_loss(pred, flow, reduction="none")

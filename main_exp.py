@@ -29,7 +29,7 @@ if __name__ == "__main__":
         "DeepFilter",
         "ECG_GAN",
         ""
-    ], default="EDDM", help="Experiment name")
+    ], default="FlowMatching", help="Experiment name")
     parser.add_argument('--device', default='cuda:0' if torch.cuda.is_available() else 'cpu', help='Device')
     parser.add_argument('--n_type', type=int, default=1, help='noise version')
     
@@ -102,10 +102,13 @@ if __name__ == "__main__":
     # FlowMatching
     if (args.exp_name == "FlowMatching"):
         from generation_filters.FlowBackbone import Unet
+        from generation_filters.AdaptiveSteps import AdaptiveStepScheduler
         from generation_filters.FlowMatching import CFM, AdaCFM
         
         base_model = Unet(**config['base_model']).to(args.device)
+        adapt_scheduler = AdaptiveStepScheduler(**config['adapt_scheduler']).to(args.device)
         model = CFM(base_model=base_model, **config['flow']).to(args.device)
+        # model = AdaCFM(base_model=base_model,adapt_scheduler=adapt_scheduler, **config['flow']).to(args.device)
         train_flow(model, config['train'], train_loader, args.device, 
         valid_loader=val_loader, valid_epoch_interval=args.val_interval, foldername=foldername, log_dir=log_dir)
         
