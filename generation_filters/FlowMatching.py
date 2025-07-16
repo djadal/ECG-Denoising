@@ -8,7 +8,7 @@ import torch
 import torch.nn.functional as F
 from torch import nn
 from torchdiffeq import odeint
-from utils import default, exists
+from .utils import default, exists
 
 
 class CFM(nn.Module):
@@ -54,13 +54,11 @@ class CFM(nn.Module):
             cond = torch.zeros_like(cond)
 
         def fn(t, x):
-            pred = self.base_model(
-                x=x, cond=step_cond, time=t
-            )
+            nonlocal cond
+            x = torch.cat((x, cond), dim=1) if exists(cond) else x
+            return self.base_model(x=x, time=t.expand(x.shape[0]))
 
-            return pred 
-
-        y0 = torch.randn_like(cond)
+        y0 = cond
         t_start = 0
         t = torch.linspace(t_start, 1, steps + 1, device=self.device, dtype=step_cond.dtype)
         
@@ -105,8 +103,9 @@ class CFM(nn.Module):
         flow = x1 - x0
         cond = input
 
+        φ = torch.cat((φ, cond), dim=1) if exists(cond) else φ
         pred = self.base_model(
-            x=φ, cond=cond, time=time
+            x=φ, time=time
         )
 
         loss = F.mse_loss(pred, flow, reduction="none")

@@ -8,7 +8,7 @@ from pathlib import Path
 
 from data_preparation import Data_Preparation
 
-from trainer import train_diffusion, train_gan, train_dl, train_eddm
+from trainer import train_diffusion, train_gan, train_dl, train_eddm, train_flow
 
 from torch.utils.data import DataLoader, Subset, ConcatDataset, TensorDataset
 
@@ -20,6 +20,7 @@ if __name__ == "__main__":
     parser.add_argument("--exp_name", type=str, choices=[
         "DeScoD",
         "EDDM",
+        "FlowMatching",
         "DRNN",
         "FCN_DAE",
         "ACDAE",
@@ -96,6 +97,16 @@ if __name__ == "__main__":
         base_model = UnetRes(**config['base_model']).to(args.device)
         model = ResidualDiffusion(model=base_model, **config['diffusion']).to(args.device)
         train_eddm(model, config['train'], train_loader, args.device, 
+        valid_loader=val_loader, valid_epoch_interval=args.val_interval, foldername=foldername, log_dir=log_dir)
+
+    # FlowMatching
+    if (args.exp_name == "FlowMatching"):
+        from generation_filters.FlowBackbone import Unet
+        from generation_filters.FlowMatching import CFM, AdaCFM
+        
+        base_model = Unet(**config['base_model']).to(args.device)
+        model = CFM(base_model=base_model, **config['flow']).to(args.device)
+        train_flow(model, config['train'], train_loader, args.device, 
         valid_loader=val_loader, valid_epoch_interval=args.val_interval, foldername=foldername, log_dir=log_dir)
         
     # DRNN

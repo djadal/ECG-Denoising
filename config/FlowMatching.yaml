@@ -1,0 +1,33 @@
+
+#type: args
+
+train:
+  epochs: 100000
+  batch_size: 64
+  gradient_accumulate_every: 1
+  valid_epoch_interval: 5000
+  condition: true
+  use_ema: true
+
+  optimizer:
+    type: "RAdam"
+    lr: 1.0e-5
+    weight_decay: 0.
+
+base_model:
+  dim: 64
+  out_dim: 1
+  channels: 1
+  self_condition: false
+  condition: true
+
+flow:
+  sigma: 0.0
+  odeint_kwargs:
+    method: "euler"
+  num_channels: 1
+  sampling_timesteps: 10
+  default_use_ode: false
+
+test:
+  batch_size: 64

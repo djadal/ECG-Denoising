@@ -73,6 +73,14 @@ def evaluate_model(args):
                 
                 base_model = UnetRes(**config['base_model']).to(args.device)
                 model = ResidualDiffusion(model=base_model, **config['diffusion']).to(args.device)
+    
+            # FlowMatching
+            elif (args.exp_name == "FlowMatching"):
+                from generation_filters.FlowBackbone import Unet
+                from generation_filters.FlowMatching import CFM, AdaCFM
+                
+                base_model = Unet(**config['base_model']).to(args.device)
+                model = CFM(base_model=base_model, **config['flow']).to(args.device)
                 
             # DRNN
             elif args.exp_name == "DRNN":
@@ -139,6 +147,9 @@ def evaluate_model(args):
                             denoised_batch = denoised_batch / shots
                         else:
                             [_, denoised_batch] = model.sample([noisy_batch, 0], batch_size=noisy_batch.shape[0])
+                    elif args.exp_name == "FlowMatching":
+
+                        [denoised_batch, _] = model.sample(noisy_batch)
                     elif args.exp_name == "ECG_GAN":
                         batch_size = noisy_batch.shape[0]
                         z = torch.randn(batch_size, 512, 8).to(args.device)
@@ -224,6 +235,7 @@ if __name__ == "__main__":
         "IIR",
         "DeScoD",
         "EDDM",
+        "FlowMatching",
         "DRNN",
         "FCN_DAE",
         "ACDAE",

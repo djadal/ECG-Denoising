@@ -468,4 +468,104 @@ def train_eddm(model, config, train_loader, device, valid_loader=None, valid_epo
         else:
             torch.save(model.state_dict(), final_path)
     
-     
+
+
+def train_flow(model, config, train_loader, device, valid_loader=None, valid_epoch_interval=5, foldername="", log_dir=None):
+    from ema_pytorch import EMA
+    train_num_steps = config.get("epochs", 500)
+    gradient_accumulate_every = config.get("gradient_accumulate_every", 1)
+    valid_epoch_interval = config.get("valid_epoch_interval", 1)
+    condition = config.get("condition", False)
+    
+    optimizer_config = config['optimizer']
+    optimizer_type = getattr(optim, optimizer_config.get("type", "Adam"))
+    optimizer = optimizer_type(model.base_model.parameters(), **{k: v for k, v in optimizer_config.items() if k not in ['type']})
+
+    use_ema = config.get("use_ema", False)
+    if use_ema:
+        ema = EMA(model, beta=0.995, update_every=10)
+        ema.to(device)
+
+    if foldername != "":
+        output_path = foldername + "/model.pth"
+        final_path = foldername + "/final.pth"
+    
+    step = 0
+    best_valid_loss = 1e15
+    writer = SummaryWriter(log_dir=log_dir)
+
+    data_iter = iter(train_loader)
+    
+    with tqdm(initial=step, total=train_num_steps) as pbar:
+        while step < train_num_steps:
+            model.train()
+            total_loss = 0.
+       
+            for _ in range(gradient_accumulate_every):
+                try:
+                    clean_batch, noisy_batch = next(data_iter)
+                    clean_batch, noisy_batch = clean_batch.to(device), noisy_batch.to(device)
+                except StopIteration:
+                    data_iter = iter(train_loader)
+                    clean_batch, noisy_batch = next(data_iter)
+                    clean_batch, noisy_batch = clean_batch.to(device), noisy_batch.to(device)
+      
+                loss, _, _ = model(noisy_batch, clean_batch)
+                loss/= gradient_accumulate_every
+                total_loss += loss.item()
+                
+                loss.backward()
+
+            torch.nn.utils.clip_grad_norm_(model.parameters(), 1.0)
+            optimizer.step()
+
+            if use_ema:
+                ema.update()
+
+            step += 1
+            pbar.update(1)
+            pbar.set_description(f'loss: {total_loss:.4f}')
+            
+            writer.add_scalar(f'Loss/Train', total_loss, step)
+
+            if step % valid_epoch_interval == 0:
+                if valid_loader is not None:
+                    model.eval()
+                    avg_loss_valid = 0
+                    
+                    with torch.no_grad():
+                        with tqdm(valid_loader) as it:
+                            for batch_no, (clean_batch, noisy_batch) in enumerate(it, start=1):
+                                clean_batch, noisy_batch = clean_batch.to(device), noisy_batch.to(device)
+
+                                [denoised_batch, _] = model.sample(noisy_batch)
+                                loss = SSDLoss()(denoised_batch, clean_batch).item()
+                                
+                                avg_loss_valid += loss
+                                
+                                it.set_postfix(
+                                ordered_dict={
+                                    "valid_avg_epoch_loss": f"{avg_loss_valid / batch_no:.4f}",
+                                    "epoch": step,
+                                },
+                                refresh=True,
+                                )
+
+                        writer.add_scalar('Loss/Validation', avg_loss_valid / batch_no, step)
+                    
+                    if best_valid_loss > avg_loss_valid / batch_no:
+                        best_valid_loss = avg_loss_valid / batch_no
+                        print(f"\n Best loss updated to {avg_loss_valid / batch_no:.4f} at step {step}")
+                        
+                        if foldername != "":
+                            if use_ema:
+                                torch.save(ema.ema_model.state_dict(), output_path)
+                            else:
+                                torch.save(model.state_dict(), output_path)
+
+    if foldername != "":
+        if use_ema:
+            torch.save(ema.ema_model.state_dict(), final_path)
+        else:
+            torch.save(model.state_dict(), final_path)
+      
