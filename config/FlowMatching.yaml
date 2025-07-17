@@ -21,6 +21,13 @@ base_model:
   self_condition: false
   condition: true
 
+adapt_scheduler:
+  num_layers: 3
+  dim: 64
+  head_size: 32
+  num_heads: 4
+  ff_dim: 256
+
 flow:
   sigma: 0.0
   odeint_kwargs:

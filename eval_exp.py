@@ -20,8 +20,7 @@ def evaluate_model(args):
     
     for n_type in [1, 2]:
         # Load Data
-        # [_, _, X_test, y_test] = Data_Preparation(n_type)
-        [_, _, X_test, y_test] = Data_Preparation_RMN(n_type)
+        [_, _, X_test, y_test] = Data_Preparation(n_type) if not args.use_rmn else Data_Preparation_RMN(n_type)
         
         try:
             noise_level = np.load('./Data/prepared/rnd_test.npy')
@@ -186,14 +185,14 @@ def evaluate_model(args):
 
     if all_noise_levels:
         n_level = np.concatenate(all_noise_levels)
-        # segs = [0.2, 0.6, 1.0, 1.5, 2.0]
-        segs = [-6, 0, 6, 12, 18]
+        segs = [0.2, 0.6, 1.0, 1.5, 2.0]
+        # segs = [-6, 0, 6, 12, 18]
         segmented_results = {}
         
         for name in all_metrics:
             segmented_results[name] = {}
             for idx_seg in range(len(segs) - 1):
-                seg_label = f"{segs[idx_seg]}-{segs[idx_seg+1]}dB"
+                seg_label = f"{segs[idx_seg]}-{segs[idx_seg+1]}"
                 idx = np.where(np.logical_and(n_level >= segs[idx_seg], n_level <= segs[idx_seg + 1]))[0]
                 
                 if len(idx) == 0:
@@ -215,7 +214,7 @@ def evaluate_model(args):
         writer.writerow([])
 
         if all_noise_levels:
-            seg_labels = [f"{segs[i]}-{segs[i+1]}dB" for i in range(len(segs)-1)]
+            seg_labels = [f"{segs[i]}-{segs[i+1]}" for i in range(len(segs)-1)]
             writer.writerow(["Metrics"] + seg_labels)
             
             for metric in ["SSD", "MAD", "PRD", "COS_SIM", "SNR out", "ImSNR"]:
@@ -247,6 +246,7 @@ if __name__ == "__main__":
         "ECG_GAN",
     ], default="DeepFilter", help="Experiment name")
     parser.add_argument('--device', default='cuda:0' if torch.cuda.is_available() else 'cpu', help='Device')
+    parser.add_argument('--use_rmn', type=bool, default=False, help='Use Random Mixed Noise')
     parser.add_argument('--shots', type=int, default=1, help='Number of shots for Diffusion model')
     
     args = parser.parse_args()

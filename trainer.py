@@ -3,8 +3,8 @@ import torch
 import torch.optim as optim
 from torch.utils.tensorboard import SummaryWriter
 from tqdm import tqdm
-import pickle
-from utils.loss_function import SSDLoss, CombinedSSDMSELoss, CombinedSSDMADLoss, MADLoss, HuberFreqLoss
+
+from utils.loss_function import SSDLoss, CombinedSSDMADLoss, MADLoss, HuberFreqLoss
 from utils.train_utils import LRScheduler, EarlyStopping
 
 def train_diffusion(model, config, train_loader, device, valid_loader=None, valid_epoch_interval=5, foldername="", log_dir=None):
@@ -437,7 +437,7 @@ def train_eddm(model, config, train_loader, device, valid_loader=None, valid_epo
                             for batch_no, (clean_batch, noisy_batch) in enumerate(it, start=1):
                                 clean_batch, noisy_batch = clean_batch.to(device), noisy_batch.to(device)
 
-                                [_, denoised_batch] = model.sample([noisy_batch, 0], batch_size=noisy_batch.shape[0])
+                                [_, denoised_batch] = ema.ema_model.sample([noisy_batch, 0], batch_size=noisy_batch.shape[0])
                                 loss = SSDLoss()(denoised_batch, clean_batch).item()
                                 
                                 avg_loss_valid += loss
@@ -500,6 +500,7 @@ def train_flow(model, config, train_loader, device, valid_loader=None, valid_epo
         while step < train_num_steps:
             model.train()
             total_loss = 0.
+            optimizer.zero_grad()
        
             for _ in range(gradient_accumulate_every):
                 try:
@@ -538,7 +539,7 @@ def train_flow(model, config, train_loader, device, valid_loader=None, valid_epo
                             for batch_no, (clean_batch, noisy_batch) in enumerate(it, start=1):
                                 clean_batch, noisy_batch = clean_batch.to(device), noisy_batch.to(device)
 
-                                [denoised_batch, _] = model.sample(noisy_batch)
+                                [denoised_batch, _] = ema.ema_model.sample(noisy_batch)
                                 loss = SSDLoss()(denoised_batch, clean_batch).item()
                                 
                                 avg_loss_valid += loss

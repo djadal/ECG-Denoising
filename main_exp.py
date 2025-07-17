@@ -6,7 +6,7 @@ import yaml
 import os
 from pathlib import Path
 
-from data_preparation import Data_Preparation
+from data_preparation import Data_Preparation, Data_Preparation_RMN
 
 from trainer import train_diffusion, train_gan, train_dl, train_eddm, train_flow
 
@@ -31,6 +31,7 @@ if __name__ == "__main__":
         ""
     ], default="FlowMatching", help="Experiment name")
     parser.add_argument('--device', default='cuda:0' if torch.cuda.is_available() else 'cpu', help='Device')
+    parser.add_argument('--use_rmn', type=bool, default=False, help='Add Random Mixed Noise')
     parser.add_argument('--n_type', type=int, default=1, help='noise version')
     
     parser.add_argument('--val_interval', type=int, default=1)
@@ -50,7 +51,7 @@ if __name__ == "__main__":
     os.makedirs(log_dir, exist_ok=True)
     
     # Load Data
-    [X_train, y_train, X_test, y_test] = Data_Preparation(args.n_type)
+    [X_train, y_train, X_test, y_test] = Data_Preparation(args.n_type) if not args.use_rmn else Data_Preparation_RMN(args.n_type)
     
     X_train = torch.FloatTensor(X_train)
     X_train = X_train.permute(0,2,1)
